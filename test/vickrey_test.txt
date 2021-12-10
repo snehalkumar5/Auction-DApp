@@ -1,0 +1,93 @@
+// Initialisation
+compile
+migrate
+let accounts = await web3.eth.getAccounts()
+let instance = await VikreyAuction.deployed()
+const EthCrypto = require('eth-crypto');
+
+// Create publicKey-privateKey pairs for required accounts
+let identities = [EthCrypto.createIdentity(),EthCrypto.createIdentity(),EthCrypto.createIdentity(),EthCrypto.createIdentity()];
+
+// Enlist Auction
+instance.auctionItem("netflix","5 screens UHD",40,40, {from: accounts[0]})
+
+// Beneficiary bids (invalid)
+instance.bid(web3.utils.keccak256(web3.eth.abi.encodeParameters(["uint256","string"],[100,"beneficiary"])),0,identities[0].publicKey,{from:accounts[0],value:310})
+
+// First bid (valid)
+web3.eth.getBalance(accounts[1])
+instance.bid(web3.utils.keccak256(web3.eth.abi.encodeParameters(["uint256","string"],[100,"first"])),0,identities[1].publicKey,{from:accounts[1],value:210})
+web3.eth.getBalance(accounts[1])
+
+// Repeat bid (invalid)
+instance.bid(web3.utils.keccak256(web3.eth.abi.encodeParameters(["uint256","string"],[150,"first repeat"])),0,identities[1].publicKey,{from:accounts[1],value:360})
+web3.eth.getBalance(accounts[1])
+
+// Second bid (valid)
+web3.eth.getBalance(accounts[2])
+instance.bid(web3.utils.keccak256(web3.eth.abi.encodeParameters(["uint256","string"],[50,"second"])),0,identities[2].publicKey,{from:accounts[2],value:150})
+web3.eth.getBalance(accounts[2])
+
+// Bid with insufficient deposit (invalid, but will not show error while bidding)
+web3.eth.getBalance(accounts[3])
+instance.bid(web3.utils.keccak256(web3.eth.abi.encodeParameters(["uint256","string"],[110,"insufficient deposit"])),0,identities[3].publicKey,{from:accounts[3],value:200})
+web3.eth.getBalance(accounts[3])
+
+// ----------BIDDING PERIOD ENDS----------
+
+// Reveal from account that did not bid (invalid)
+instance.reveal(50,"did not bid",0,{from:accounts[4]})
+
+// Second bid reveal (valid, will keep 2x bis value and return rest of deposit)
+web3.eth.getBalance(accounts[2])
+instance.reveal(50,"second",0,{from:accounts[2]})
+web3.eth.getBalance(accounts[2])
+
+// First bid reveal (valid, will keep 2x bis value and return rest of deposit)
+web3.eth.getBalance(accounts[1])
+instance.reveal(100,"first",0,{from:accounts[1]})
+web3.eth.getBalance(accounts[1])
+
+// Bid with insufficient deposit revealed (invalid, will not throw error, but will return entire deposit)
+web3.eth.getBalance(accounts[3])
+instance.reveal(110,"insufficient deposit",0,{from:accounts[3]})
+web3.eth.getBalance(accounts[3])
+
+// ----------REVEAL PERIOD ENDS----------
+
+// End Auction (Second bidder lost, so his deposit will be returned, and 2x winning Bid will be kept and rest return to first bidder)
+web3.eth.getBalance(accounts[2])
+instance.auctionEnd(0,{from:accounts[0]})
+web3.eth.getBalance(accounts[2])
+web3.eth.getBalance(accounts[0])
+
+// Encrypting password with winner's public key
+let password = "ye le password"
+let encrypted_message = await EthCrypto.encryptWithPublicKey(identities[1].publicKey, password)
+let secret_cipher_string = await EthCrypto.cipher.stringify(encrypted_message);
+
+// password encrypted with public key sent, and deposit worth 2x the winning Bid is taken from seller
+x = await instance.sellItem(0,secret_cipher_string,{from:accounts[0],value:100})
+x.logs
+web3.eth.getBalance(accounts[0])
+web3.eth.getBalance(accounts[1])
+
+// password decrypted with private key by winner
+let sent_string = await x.logs[0].args.H;
+let cipher = EthCrypto.cipher.parse(sent_string);
+let sent_item = await EthCrypto.decryptWithPrivateKey(identities[1].privateKey,cipher);
+sent_item
+
+// Winner condirms delivery of item, and the transaction ends
+instance.confirmDelivery(0,{from:accounts[1]})
+web3.eth.getBalance(accounts[0])
+web3.eth.getBalance(accounts[1])
+
+// Enlist Another Auction
+instance.auctionItem("prime","7 months membership remaining",30,30, {from: accounts[1]})
+
+// Returns all active auctions
+instance.getactiveauctions({from: accounts[0]})
+
+// Returns all auctions
+instance.getallauctions({from: accounts[1]})
